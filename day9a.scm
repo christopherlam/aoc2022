@@ -1,0 +1,47 @@
+(use-modules (ice-9 rdelim))
+(use-modules (ice-9 match))
+(use-modules (srfi srfi-1))
+
+(define (make-rope)
+  (let* ((head (cons 0 0))
+         (tail (cons 0 0))
+         (tails (list (list tail)))
+         (move-head (lambda (x y)
+                      (let ((old head))
+                        (set! head (cons (+ (car head) x) (+ (cdr head) y)))
+                        (when (< 1 (max (abs (- (car tail) (car head)))
+                                        (abs (- (cdr tail) (cdr head)))))
+                          (set! tail old)
+                          (set! tails (assoc-set! tails tail '())))
+                        #;
+                        (format #t "head ~a tail ~a\n" head tail)))))
+    (lambda (action)
+      (case action
+        ((u) (move-head 0 1))
+        ((d) (move-head 0 -1))
+        ((l) (move-head -1 0))
+        ((r) (move-head 1 0))
+        ((head) head)
+        ((tail) tail)
+        ((tails) tails)
+        (else (move-head 0 0))
+        ))))
+
+(define (walk file)
+  (call-with-input-file file
+    (lambda (port)
+      (define rope (make-rope))
+      (let lp ((line (read-line port)))
+        (cond
+         ((or (eof-object? line) (string-null? line))
+          (pk 'head (rope 'head) 'tail (rope 'tail))
+          (pk 'tails (length (rope 'tails))))
+         (else
+          (match (string-split line #\space)
+            (("U" (= string->number num)) (for-each (lambda (x) (rope 'u)) (iota num)))
+            (("D" (= string->number num)) (for-each (lambda (x) (rope 'd)) (iota num)))
+            (("L" (= string->number num)) (for-each (lambda (x) (rope 'l)) (iota num)))
+            (("R" (= string->number num)) (for-each (lambda (x) (rope 'r)) (iota num))))
+          (lp (read-line port))))))))
+
+(walk "input9b.txt")
