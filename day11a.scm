@@ -1,0 +1,90 @@
+(use-modules (ice-9 rdelim))
+(use-modules (ice-9 regex))
+(use-modules (ice-9 match))
+(use-modules (srfi srfi-1))
+(use-modules (srfi srfi-9))
+
+(define-record-type :monkey
+  (make-monkey id items operation divisible-by throw-true throw-false tally)
+  monkey?
+  (id monkey-id)
+  (items monkey-items monkey-set-items!)
+  (operation monkey-operation monkey-set-operation!)
+  (divisible-by monkey-divisible-by monkey-set-divisible-by!)
+  (throw-true monkey-throw-true monkey-set-throw-true!)
+  (throw-false monkey-throw-false monkey-set-throw-false!)
+  (tally monkey-tally monkey-set-tally!))
+
+(define (delim? c)
+  (memv c '(#\space #\: #\,)))
+
+(define (elim-empty-string lst)
+  (filter (negate string-null?) lst))
+
+(define (walk file)
+  (call-with-input-file file
+    (lambda (port)
+      (let lp ((line (read-line port)) (monkeys '()))
+        (if (eof-object? line) (reverse monkeys)
+            (match (elim-empty-string (string-split line delim?))
+              (("Monkey" (= string->number id))
+               (lp (read-line port) (cons (make-monkey id #f #f #f #f #f 0) monkeys)))
+              (("Starting" "items" . rest)
+               (monkey-set-items! (car monkeys) (map string->number rest))
+               (lp (read-line port) monkeys))
+              (("Operation" "new" "=" . rest)
+               (monkey-set-operation! (car monkeys) rest)
+               (lp (read-line port) monkeys))
+              (("Test" "divisible" "by" divisible)
+               (monkey-set-divisible-by! (car monkeys) (string->number divisible))
+               (lp (read-line port) monkeys))
+              (("If" "true" "throw" "to" "monkey" to)
+               (monkey-set-throw-true! (car monkeys) (string->number to))
+               (lp (read-line port) monkeys))
+              (("If" "false" "throw" "to" "monkey" to)
+               (monkey-set-throw-false! (car monkeys) (string->number to))
+               (lp (read-line port) monkeys))
+              (() (lp (read-line port) monkeys))
+              (line (error line))))))))
+
+(define (operation operation old)
+  (define (get-val a)
+    (cond
+     ((equal? a "old") old)
+     ((string->number a) => identity)
+     (else (error "getval" a))))
+  (match operation
+    ((a "*" b) (* (get-val a) (get-val b)))
+    ((a "+" b) (+ (get-val a) (get-val b)))
+    (_ (error operation))))
+
+(define (run-rounds monkeys)
+  (for-each pk monkeys)
+  (let lp1 ((round 1) (monkeyleft monkeys))
+    (cond
+     ((= round 21)
+      (pk 'finish-round round))
+     (else
+      (match monkeyleft
+        (() (pk 'starting-round round) (for-each pk monkeys) (lp1 (1+ round) monkeys))
+        ((monkey . rest-monkeys)
+         (let lp2 ((old-list (monkey-items monkey)))
+           (match old-list
+             (()
+              (monkey-set-items! monkey '())
+              (lp1 round rest-monkeys))
+             ((item . rest-items)
+              (monkey-set-tally! monkey (1+ (monkey-tally monkey)))
+              (let* ((new (quotient (operation (monkey-operation monkey) item) 3))
+                     (div? (zero? (remainder new (monkey-divisible-by monkey))))
+                     (new-monkey-id (if div?
+                                        (monkey-throw-true monkey)
+                                        (monkey-throw-false monkey)))
+                     (new-monkey (list-ref monkeys new-monkey-id))
+                     (new-monkey-old-items (monkey-items new-monkey)))
+                (monkey-set-items! new-monkey (append new-monkey-old-items (list new)))
+                ;; (pk (monkey-id monkey) item '=> new 'div? div? 'new-id new-monkey-id)
+                (lp2 rest-items)))))))))))
+
+;; (for-each pk (walk "input11a.txt"))
+(run-rounds (walk "input11b.txt"))
